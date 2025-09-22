@@ -2,9 +2,9 @@ import os
 import psutil
 import docker
 import requests
+import asyncio
 import logging
 from aiogram import Bot, Dispatcher, executor, types
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -15,21 +15,12 @@ ADMIN_ID = os.getenv("ADMIN_ID")
 SERVER_IP = os.getenv("SERVER_IP", "127.0.0.1")
 
 # Проверка обязательных переменных
-if not BOT_TOKEN:
-    logger.error("BOT_TOKEN не установлен!")
-    exit(1)
-
-if not ADMIN_ID:
-    logger.error("ADMIN_ID не установлен!")
+if not BOT_TOKEN or not ADMIN_ID:
+    logger.error("BOT_TOKEN или ADMIN_ID не установлены!")
     exit(1)
 
 try:
     ADMIN_ID = int(ADMIN_ID)
-except ValueError:
-    logger.error("ADMIN_ID должен быть числом!")
-    exit(1)
-
-try:
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(bot)
     client = docker.from_env()
@@ -82,9 +73,8 @@ async def containers(msg: types.Message):
 @dp.message_handler(commands=["logs"])
 async def logs(msg: types.Message):
     try:
-        container = client.containers.get("vm_control_bot_1")  # исправлено имя контейнера
+        container = client.containers.get("vm_control_bot")
         logs_text = container.logs(tail=10).decode('utf-8', errors='ignore')
-        # Ограничиваем длину сообщения
         if len(logs_text) > 4000:
             logs_text = logs_text[:4000] + "..."
         await msg.answer(f"📜 Логи:\n{logs_text}")
@@ -97,11 +87,5 @@ async def check_now(msg: types.Message):
     await msg.answer("🔎 Проверка завершена")
 
 if __name__ == "__main__":
-    try:
-        scheduler = AsyncIOScheduler()
-        scheduler.add_job(check_services, "interval", minutes=1)
-        scheduler.start()
-        logger.info("Бот запускается...")
-        executor.start_polling(dp, skip_updates=True)
-    except Exception as e:
-        logger.error(f"Ошибка запуска бота: {e}")
+    logger.info("Бот запускается...")
+    executor.start_polling(dp, skip_updates=True)
