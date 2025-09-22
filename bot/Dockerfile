@@ -1,18 +1,7 @@
-FROM python:3.9-slim
-
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y gcc python3-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-
-# Установка системных зависимостей для docker и psutil
-RUN apt-get update && apt-get install -y \
-    gcc \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Копируем зависимости first для кеширования
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Копируем остальные файлы
-COPY . .
-
+COPY bot.py .
 CMD ["python", "bot.py"]

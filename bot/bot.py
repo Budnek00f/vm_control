@@ -2,31 +2,16 @@ import os
 import psutil
 import docker
 import requests
-import asyncio
-import logging
 from aiogram import Bot, Dispatcher, executor, types
-
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = os.getenv("ADMIN_ID")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 SERVER_IP = os.getenv("SERVER_IP", "127.0.0.1")
 
-# Проверка обязательных переменных
-if not BOT_TOKEN or not ADMIN_ID:
-    logger.error("BOT_TOKEN или ADMIN_ID не установлены!")
-    exit(1)
-
-try:
-    ADMIN_ID = int(ADMIN_ID)
-    bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher(bot)
-    client = docker.from_env()
-except Exception as e:
-    logger.error(f"Ошибка инициализации: {e}")
-    exit(1)
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(bot)
+client = docker.from_env()
 
 SERVICES = {
     "Prometheus": f"http://{SERVER_IP}:9090/-/healthy",
@@ -36,7 +21,6 @@ SERVICES = {
 }
 
 async def check_services():
-    """Проверка доступности сервисов"""
     for name, url in SERVICES.items():
         try:
             r = requests.get(url, timeout=5)
@@ -53,33 +37,25 @@ async def start(msg: types.Message):
 
 @dp.message_handler(commands=["status"])
 async def status(msg: types.Message):
-    try:
-        cpu = psutil.cpu_percent()
-        mem = psutil.virtual_memory().percent
-        disk = psutil.disk_usage('/').percent
-        await msg.answer(f"🖥 CPU: {cpu}%\n💾 RAM: {mem}%\n📀 Disk: {disk}%")
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка получения статуса: {e}")
+    cpu = psutil.cpu_percent()
+    mem = psutil.virtual_memory().percent
+    disk = psutil.disk_usage('/').percent
+    await msg.answer(f"🖥 CPU: {cpu}%\n💾 RAM: {mem}%\n📀 Disk: {disk}%")
 
 @dp.message_handler(commands=["containers"])
 async def containers(msg: types.Message):
-    try:
-        containers_list = client.containers.list(all=True)
-        text = "\n".join([f"{c.name} — {c.status}" for c in containers_list])
-        await msg.answer(text or "Нет контейнеров")
-    except Exception as e:
-        await msg.answer(f"❌ Ошибка получения контейнеров: {e}")
+    containers = client.containers.list(all=True)
+    text = "\n".join([f"{c.name} — {c.status}" for c in containers])
+    await msg.answer(text or "Нет контейнеров")
 
 @dp.message_handler(commands=["logs"])
 async def logs(msg: types.Message):
     try:
-        container = client.containers.get("vm_control_bot")
-        logs_text = container.logs(tail=10).decode('utf-8', errors='ignore')
-        if len(logs_text) > 4000:
-            logs_text = logs_text[:4000] + "..."
-        await msg.answer(f"📜 Логи:\n{logs_text}")
+        container = client.containers.get("server-bot")
+        logs = container.logs(tail=10).decode()
+        await msg.answer(f"📜 Логи:\n{logs}")
     except Exception as e:
-        await msg.answer(f"❌ Ошибка получения логов: {e}")
+        await msg.answer(str(e))
 
 @dp.message_handler(commands=["check"])
 async def check_now(msg: types.Message):
@@ -87,5 +63,7 @@ async def check_now(msg: types.Message):
     await msg.answer("🔎 Проверка завершена")
 
 if __name__ == "__main__":
-    logger.info("Бот запускается...")
-    executor.start_polling(dp, skip_updates=True)
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(check_services, "interval", minutes=1)
+    scheduler.start()
+    executor.start_polling(dp)

@@ -1,21 +1,14 @@
-version: '3.8'
-
 services:
   bot:
-    build: .
-    container_name: vm_control_bot
+    build: ./bot
+    restart: always
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_ID=${ADMIN_ID}
-      - SERVER_IP=${SERVER_IP:-127.0.0.1}
+      - SERVER_IP=${SERVER_IP}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
-    depends_on:
-      - prometheus
-      - grafana
-      - loki
-      - nginx
+    network_mode: host
 
   nginx:
     build: ./nginx
